@@ -2,11 +2,11 @@ package hsb.game.util.help;
 
 import hsb.game.util.GameProcess;
 import hsb.game.util.pathfinding.Finder;
+import hsb.game.util.pathfinding.astar_java.Astar;
+import hsb.game.util.pathfinding.astar_java.AstarPosVo;
 import hsb.game.util.pathfinding.jps.JPSFinder;
 import hsb.game.util.pathfinding.map.MapData;
 import hsb.game.util.pathfinding.map.Node;
-import hsb.game.util.pathfinding.astar_java.Astar;
-import hsb.game.util.pathfinding.astar_java.AstarPosVo;
 import hsb.game.util.util.MathUtils;
 import hsb.game.util.util.OpencvUtil;
 import org.opencv.core.*;
@@ -15,8 +15,8 @@ import org.opencv.imgproc.Imgproc;
 
 import java.util.*;
 
-import static hsb.game.util.help.RoadInfoHelper.ALLOW;
-import static hsb.game.util.help.RoadInfoHelper.setRoadAllow;
+import static hsb.game.util.GameProcess.analysisMove;
+import static hsb.game.util.help.RoadInfoHelper.*;
 
 /**
  * @author 胡帅博
@@ -33,7 +33,18 @@ public class RoadHelper {
         byte[] bytes = RoadInfoHelper.readMapRoadInfo("世界尽头");
 
 
+        //1587  2045
+        //1587 2046
+        List<Node> blockPoint = List.of(new Node(1587, 2045), new Node(1587, 2046));
+
+
         byte[] bytes2 = roadInPaint(bytes, RoadInfoHelper.roadInfoWidth, RoadInfoHelper.roadInfoHeight);
+
+        for (Node node : blockPoint) {
+            int index = node.x + node.y * roadInfoWidth;
+            bytes2[index] = MapData.OBSTACLE;
+        }
+
         MapData mapData = new MapData(bytes2);
         Finder finder = new JPSFinder(mapData);
 
@@ -46,13 +57,9 @@ public class RoadHelper {
 
         //todo findPath生成的点可能不是原图中的，而是腐蚀后的点，这种情况在拐杖处很容导致撞墙，索引
         //如果一个点不在原始的路径上，则删除，重新查早
+        List<Node> path = finder.findPath(new Node(1587, 2039), new Node(1860, 2045));
 
-        List<Node> path = finder.findPath(new Node(1502, 556), new Node(1840, 2921));
-        // List<Node> path = finder.findPath(new Node(2882, 2126), new Node(2815, 1940));
-        // List<Node> path = finder.findPath(new Node(2883, 2127), new Node(2829, 2171));
-        //  List<Node> path = finder.findPath(new Node(2883, 2127), new Node(2828, 2172));
-        // List<Node> path = finder.findPath(new Node(2882, 2126), new Node(2947, 2277));
-        // List<Node> path = finder.findPath(new Node(2882, 2126), new Node(2937, 2039));
+
 //        for (Node node : path) {
 //            int index = node.x + node.y * RoadInfoHelper.roadInfoWidth;
 //            if (bytes[index] != RoadInfoHelper.ALLOW) {
@@ -66,7 +73,12 @@ public class RoadHelper {
 
         List<Point> list = path.stream().map(x -> new Point(x.x, x.y)).toList();
 
-        List<Point> smoothPath = smoothPath(list);
+        List<Point> smoothPath = smoothPath(list,bytes,roadInfoWidth);
+
+
+        pathPointAdjust(smoothPath, bytes, roadInfoWidth, roadInfoHeight);
+        pathPointAdjust(smoothPath, bytes, roadInfoWidth, roadInfoHeight);
+        pathPointAdjust(smoothPath, bytes, roadInfoWidth, roadInfoHeight);
 
         System.out.println(list.size());
         System.out.println(smoothPath.size());
@@ -77,8 +89,8 @@ public class RoadHelper {
 
         drawPath(list, bytes, RoadInfoHelper.roadInfoWidth, RoadInfoHelper.roadInfoHeight, "t1.png");
         drawPath(smoothPath, bytes, RoadInfoHelper.roadInfoWidth, RoadInfoHelper.roadInfoHeight, "t2.png");
-        Mat mat = drawPath(smoothPath, RoadInfoHelper.roadInfoWidth, RoadInfoHelper.roadInfoHeight);
-        Imgcodecs.imwrite("bigMapTemplate/" + "t3.png", mat);
+        //  Mat mat = drawPath(smoothPath, RoadInfoHelper.roadInfoWidth, RoadInfoHelper.roadInfoHeight);
+        //  Imgcodecs.imwrite("bigMapTemplate/" + "t3.png", mat);
 //        for (int i = 0; i < smoothPath.size() - 1; i++) {
 //            Point first = smoothPath.get(i);
 //            Point second = smoothPath.get(i + 1);
@@ -86,12 +98,16 @@ public class RoadHelper {
 //        }
     }
 
+
+    /**
+     * @param mapDate 最原始的道路信息， 使用的是RoadInfoHelper.ALLOW  RoadInfoHelper.FORBID来表示道路的行走和阻挡
+     */
     public static List<Point> generateMovePath(byte[] mapDate, int width, int height, Point startPoint, Point end, int length, int method) {
 
         int x = (int) startPoint.x;
         int y = (int) startPoint.y;
         int index = x + y * width;
-        //如果起始点不可行走，那么就让七点走位length长度区域都可行走
+        //如果起始点不可行走，那么就让起点走位length长度区域都可行走
         if (mapDate[index] != ALLOW) {
             byte[] curGameRoad = Arrays.copyOf(mapDate, mapDate.length);
             setRoadAllow(curGameRoad, (int) startPoint.x, (int) startPoint.y, width, length);
@@ -104,12 +120,112 @@ public class RoadHelper {
             path = generateMovePathUseJps(mapDate, width, height, startPoint, end, length);
         }
 
+        //todo 点重定位，对于交叉口的点，因为大面积位置都可以走，算法生产的路径点可能是靠近边缘的，这时候可以往交叉口中心稍微靠近写，
+
+
         //路径平滑
         if (path != null) {
-            path = smoothPath(path);
+            path = smoothPath(path,mapDate,width);
+            pathPointAdjust(path, mapDate, width, height);
+            pathPointAdjust(path, mapDate, width, height);
         }
 
+
         return path;
+    }
+
+    private static void pathPointAdjust(List<Point> points, byte[] mapDate, int width, int height) {
+    /*
+        点位优化， 将每个点都尽可放置在路中间,这在一些狭小区域能避免碰撞
+        还有一个问题就是，平滑后的线段，可能某两点的连线上的点大部分都不是可行走区域
+
+         *大部分情况下，路网走过的地方都是保证两侧都有很宽的距离，即使偏移一点也问题不大，但是仍然有少部分狭窄地区，这时候一个微小幅度的转型调整可能
+         *
+         *
+         * 对于任意两点A连线上的点，    并且C是B的后续点
+         *   ： 如果连线上的点经过阻塞位置
+         *           统计在道路上的点数量，不在道路上的点数量,
+         *           首先尝试移动点位置，分别沿A->B方向和C->B方向的后续三个点当作新的B点做尝试,三个点中第一次遇到不在道路上的点时，仍可以计算，但是后续点丢弃
+         *           如果新位置经过的阻塞点更少，则使用新的B点
+         *
+         * */
+
+        if (points.size() < 3) {
+            return;
+        }
+
+        for (int i = 1; i < (points.size() - 1); i++) {
+            Point A = points.get(i - 1);
+            Point B = points.get(i);
+            Point C = points.get(i + 1);
+
+            Point bestB = findBestB(A, B, C, mapDate, width);
+
+            if (bestB != B) {
+                //
+                // System.out.println("找到一个更合适的B点");
+                points.set(i, bestB);
+            }
+        }
+    }
+
+    private static Point findBestB(Point A, Point B, Point C, byte[] mapDate, int width) {
+        double[] fc = calYI_YUAN_YI_CI(A, B);
+        double[] fc2 = calYI_YUAN_YI_CI(C, B);
+        //四个候选点
+        List<Point> bPoints = List.of(
+                B
+                , MathUtils.nextPoint(A, B, fc[0], fc[1], 1)
+                , MathUtils.nextPoint(A, B, fc[0], fc[1], 2)
+                , MathUtils.nextPoint(A, B, fc[0], fc[1], 3)
+
+                , MathUtils.nextPoint(C, B, fc2[0], fc2[1], 1)
+                , MathUtils.nextPoint(C, B, fc2[0], fc2[1], 2)
+                , MathUtils.nextPoint(C, B, fc2[0], fc2[1], 3)
+        );
+
+
+        Point newB = null;
+
+        int minBlockCount = Integer.MAX_VALUE;
+
+        for (int i = 0; i < bPoints.size(); i++) {
+            Point b = bPoints.get(i);
+
+            LineBlockPoint t1 = blockCountInLine(A, b, mapDate, width);
+            LineBlockPoint t2 = blockCountInLine(C, b, mapDate, width);
+
+            //int totalPointCount = t1.totalPointCount() + t2.totalPointCount();
+            int blockPointCount = t1.blockPointCount() + t2.blockPointCount();
+
+            if (blockPointCount < minBlockCount) {
+                newB = b;
+                minBlockCount = blockPointCount;
+            }
+
+            if (minBlockCount == 0) {
+                //遇到block为0的点就直接采纳
+                break;
+            }
+        }
+
+        return newB;
+    }
+
+    public record LineBlockPoint(int totalPointCount, int blockPointCount) {
+    }
+
+    private static LineBlockPoint blockCountInLine(Point A, Point B, byte[] mapDate, int pitch) {
+        List<Point> points = MathUtils.linePoints(A, B);
+        int total = points.size();
+        int blockCount = 0;
+        for (Point point : points) {
+            int index = (int) (point.x + point.y * pitch);
+            if (mapDate[index] == FORBID || mapDate[index] == DEFAULT) {
+                blockCount++;
+            }
+        }
+        return new LineBlockPoint(total, blockCount);
     }
 
 
@@ -153,8 +269,11 @@ public class RoadHelper {
         return null;
     }
 
-
     public static List<Point> smoothPath(List<Point> list) {
+        return smoothPath(list, null, 0);
+    }
+
+    public static List<Point> smoothPath(List<Point> list, byte[] mapDate, int pitch) {
 
         List<Point> smoothPath = new ArrayList<>();
         int startIndex = 0;
@@ -173,9 +292,11 @@ public class RoadHelper {
             //如果还有至少两个点则进入这里
             for (int i = index + 2; i < list.size(); i++) {
                 Point nextPoint = list.get(i);
-                GameProcess.MoveInfo moveInfo = GameProcess.analysisMove(1, 1, first, nextPoint);
-                double a = moveInfo.a();
-                double b = moveInfo.b();
+                //GameProcess.MoveInfo moveInfo = analysisMove(1, 1, first, nextPoint);
+
+                double[] fc = calYI_YUAN_YI_CI(first, nextPoint);
+                double a = fc[0];
+                double b = fc[1];
                 boolean vLine = first.x == nextPoint.x;
                 int endIndex = -1;
 
@@ -184,11 +305,27 @@ public class RoadHelper {
                     Point innerPoint = list.get(startIndex);
                     double dis = vLine ? MathUtils.pointToLineDistance(innerPoint, first.x) : MathUtils.pointToLineDistance(innerPoint, a, b);
 
-                    //如果距离超过20 或者点到线距离大于0.6则都不允许修复
-                    if (dis > 0.6) {
+                    int blockPointCount = 0;
+                    int totalPointCount = 1;
+                    if (mapDate != null) {
+                        LineBlockPoint lineBlockPoint = blockCountInLine(first, nextPoint, mapDate, pitch);
+                        blockPointCount = lineBlockPoint.blockPointCount;
+                        totalPointCount = lineBlockPoint.totalPointCount;
+                    }
+                    /*
+                     *           新路径上的点的连线上经过的阻塞点数量大于某个阈值，这一段AB的长度也大于某个阈值，则需要在A和B的中心点A2
+                     *
+                     * */
+
+                    boolean blockMany = totalPointCount > 9 && (blockPointCount*1.0/totalPointCount) >0.4;
+
+                    // 点到线距离大于0.6 或者连线上超过10个点是不可行走的，则都不允许修复
+                    if (dis > 0.6 || blockMany) {
                         endIndex = i - 1;
                         break;
                     }
+
+
                 }
 
                 if (endIndex == -1) {
@@ -215,7 +352,7 @@ public class RoadHelper {
         int preDy = 0;
         Point prePoint = smoothPath.get(0);
         Point second = smoothPath.get(1);
-        GameProcess.MoveInfo preMoveInfo = GameProcess.analysisMove(1, 1, prePoint, second);
+        GameProcess.MoveInfo preMoveInfo = analysisMove(1, 1, prePoint, second);
         if (second.x > prePoint.x) preDx = 1;
         else if (second.x < prePoint.x) preDx = -1;
         if (second.y > prePoint.y) preDy = 1;
@@ -232,7 +369,7 @@ public class RoadHelper {
             else if (curPoint.y < prePoint.y) dy = -1;
 
 
-            GameProcess.MoveInfo moveInfo = GameProcess.analysisMove(1, 1, prePoint, curPoint);
+            GameProcess.MoveInfo moveInfo = analysisMove(1, 1, prePoint, curPoint);
 
             double abs = Math.abs(moveInfo.calDirect() - preMoveInfo.calDirect());
             double distance = MathUtils.pointDistance(curPoint, keyPoints.get(keyPoints.size() - 1));
@@ -277,7 +414,7 @@ public class RoadHelper {
                 }
             }
 
-            if (minDistance < 8) {
+            if (minDistance < 7) {
                 //一次移动过小，取中间点代替
                 Point pre = keyPoints.get(minDistanceIndex);
                 Point next = keyPoints.get(minDistanceIndex + 1);
@@ -293,10 +430,11 @@ public class RoadHelper {
                     double x = (pre.x + next.x) / 2.0;
                     double y = (pre.y + next.y) / 2.0;
                     Point p = new Point(x, y);
-                    keyPoints.remove(pre);
-                    keyPoints.remove(next);
 
                     keyPoints.set(minDistanceIndex, p);
+                    //这里要添加，再删除，不然这个索引就乱了
+                    keyPoints.remove(pre);
+                    keyPoints.remove(next);
                 }
             } else {
                 break;

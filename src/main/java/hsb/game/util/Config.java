@@ -17,8 +17,9 @@ public class Config {
             "诸王峡谷", List.of(new Point(1100, 2433),new Point(1968, 3383),new Point(2666, 1798),new Point(3534, 2525))
             //, "世界尽头", List.of(new Point(1817, 2534), new Point(2888, 2130))
           //  , "世界尽头", List.of(new Point(2888, 2130),new Point(1973, 1619),new Point(2649, 3367),new Point(1050, 727),new Point(3130, 3561))
-           , "世界尽头", List.of(new Point(1973, 1619),new Point(2649, 3367),new Point(1050, 727),new Point(3130, 3561))
-
+        //   , "世界尽头", List.of(new Point(1973, 1619),new Point(2649, 3367),new Point(1050, 727),new Point(3130, 3561))
+         //   , "世界尽头", List.of(new Point(1616, 1741))
+            , "世界尽头", List.of(new Point(1507, 1828))
 
             // ,"奥林匹斯",List.of(new Point(1200, 1600),new Point(2340, 2175))
             , "奥林匹斯", List.of(new Point(2413, 2116))

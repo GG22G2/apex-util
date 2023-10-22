@@ -10,6 +10,7 @@ import hsb.game.util.imageconcat.GetBigMap;
 import hsb.game.util.match.ApexSiftMatcher;
 import hsb.game.util.paddleocrutil.wrapper.PaddleOcr;
 import hsb.game.util.process.MoveController;
+import hsb.game.util.process.RandomMoveController;
 import hsb.game.util.util.MathUtils;
 import hsb.game.util.util.OpencvUtil;
 import hsb.game.util.util.RobotUtil;
@@ -30,9 +31,9 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-import static hsb.game.util.dll.CaptureDLL.apexWindowRect;
 import static hsb.game.util.Config.resolutionX;
 import static hsb.game.util.Config.resolutionY;
+import static hsb.game.util.dll.CaptureDLL.apexWindowRect;
 import static hsb.game.util.help.RoadInfoHelper.*;
 
 /**
@@ -42,54 +43,21 @@ import static hsb.game.util.help.RoadInfoHelper.*;
  * 游戏流程
  */
 public class GameProcess {
-
-    public final static Map<String, String> mapNameMap = Map.of(
-            "奥林匹斯", "alps.png"
-            , "诸王峡谷", "zwxg.png"
-            , "世界尽头", "sjjt.png"
-    );
-
-
-    ApexSiftMatcher apexSiftMatcher = new ApexSiftMatcher();
-    private String curMapName;
-
-    private Mat bigMap;
-    //地图对应的路况信息
-    private byte[] roadInfo;
-
-    MoveController moveController = new MoveController(this);
-
-    private ApexSiftMatcher.DetectedFeature bigMatFeature;
-
     public static void main(String[] args) {
         OpencvUtil.init();
         GameProcess gameProcess = new GameProcess();
 
-        for (int i = 0; i < 1; i++) {
-            //  gameProcess.playGameOnce(RECORD_ROAD); //记录模式
+        for (int i = 0; i < 10000; i++) {
+           //  gameProcess.playGameOnce(RECORD_ROAD); //记录模式
             gameProcess.playGameOnce(NAVIGATE); //导航模式
-        }
-        WindowHelper.close(); //关闭所有窗口
-    }
-
-
-
-
-
-    //
-    public static void main2(String[] args) {
-        OpencvUtil.init();
-        GameProcess gameProcess = new GameProcess();
-
-        for (int i = 0; i < 1; i++) {
-          //  gameProcess.playGameOnce(RECORD_ROAD); //记录模式
-           gameProcess.playGameOnce(NAVIGATE); //导航模式
+          //  gameProcess.playGameOnce(RANDOM_MOVE);
         }
 
-      // gameProcess.recordHumanMove("诸王峡谷");
-     //   gameProcess.navigationMove("诸王峡谷");
+       // gameProcess.recordHumanMove("诸王峡谷");
+       // gameProcess.navigationMove("奥林匹斯");
 
-        //  gameProcess.getBigMat("奥林匹斯");
+        //gameProcess.getBigMat("世界尽头");
+        //gameProcess.randomMove2();
         //gameProcess.xDirect(230, Config.xAngeleScale / 2);
         //奥林匹斯
         // gameProcess.prepareLargeMat("世界尽头");
@@ -115,12 +83,35 @@ public class GameProcess {
 
     }
 
+    public final static Map<String, String> mapNameMap = Map.of(
+            "奥林匹斯", "alps.png"
+            , "诸王峡谷", "zwxg.png"
+            , "世界尽头", "sjjt.png"
+    );
+
+
+    ApexSiftMatcher apexSiftMatcher = new ApexSiftMatcher();
+    private String curMapName;
+
+    private Mat bigMap;
+    //地图对应的路况信息
+    private byte[] roadInfo;
+
+    MoveController moveController = new MoveController(this);
+    RandomMoveController randomMoveController = null;
+    private ApexSiftMatcher.DetectedFeature bigMatFeature;
+
 
     public static final int RECORD_ROAD = 1;
 
     public static final int RANDOM_MOVE = 2;
 
     public static final int NAVIGATE = 3;
+
+
+    public GameProcess(){
+        randomMoveController = new RandomMoveController(this,moveController);
+    }
 
     //玩一次游戏
     public void playGameOnce(int playType) {
@@ -171,7 +162,7 @@ public class GameProcess {
                 if (playType == RECORD_ROAD) {
                     recordHumanMove(0);
                 } else if (playType == RANDOM_MOVE) {
-                    randomMove(120);
+                    randomMove2();
                 } else if (playType == NAVIGATE) {
                     navigationMove(1000 * 60 * 15);
                 }
@@ -266,6 +257,7 @@ public class GameProcess {
                     System.out.println("速度过快，忽略采样");
                 } else {
                     recordRoadInfo(roadInfo, moveInfo, roadInfoWidth, true);
+                    showRoadInfo(roadInfo, (int) moveInfo.startPoint.x, (int) moveInfo.startPoint.y, roadInfoWidth, 300);
                     if (i % 60 == 0) {
                         saveMapRoadInfo(roadInfo, curMapName);
                     }
@@ -388,6 +380,7 @@ public class GameProcess {
                     }
 
                 }
+                moveController.stop();
                 moveController.forward();
                 //如果此时还在天上飞，则开始垂直降落
                 if (isFiy) {
@@ -469,6 +462,7 @@ public class GameProcess {
         getBigMat(mapNme);
         navigationMove(0);
     }
+
     /**
      * @param surviveTime 存货时间，单位毫秒
      */
@@ -523,10 +517,11 @@ public class GameProcess {
                 "奥林匹斯", new Point(2932, 2273)
                 , "诸王峡谷", new Point(2941, 3048)
                 // , "世界尽头", new Node(2815, 1940)
-                , "世界尽头", new Point(1536, 2373)
+                // , "世界尽头", new Point(1536, 2373)
+                , "世界尽头", new Point(1860, 2045)   //测速障碍物
         ).get(curMapName);
 
-       return RoadHelper.generateMovePath(roadInfo,mapWidth,mapHeight,startPoint,end,length,1);
+        return RoadHelper.generateMovePath(roadInfo, mapWidth, mapHeight, startPoint, end, length, 0);
     }
 
     /**
@@ -542,7 +537,7 @@ public class GameProcess {
                 if (lastCenterPoint != null) {
                     RoadHelper.showGenerateRoadInfo(mat, (int) lastCenterPoint.x, (int) lastCenterPoint.y, 80);
                 }
-                RobotUtil.sleep(300);
+                RobotUtil.sleep(16);
             }
             System.out.println("展示结束");
         });
@@ -559,13 +554,19 @@ public class GameProcess {
                 if (status == MoveController.MOVE_SUCCESS) {
                     prePoint = nextPoint;
                 } else {
+                    if(status == MoveController.MOVE_THROUGH){
+                        status = moveController.moveToPoint(nextPoint);
+                        if (status == MoveController.MOVE_SUCCESS){
+                            continue;
+                        }
+                    }
 
                     Point curPoint = calCurPosition();
 
                     MoveInfo moveInfo2 = analysisMove(1, 1, prePoint, nextPoint);
 
 
-                    double angleAdjust = 0 ;
+                    double angleAdjust = 0;
                     //如果遇到障碍物了，则标记一下,更新地图
                     if (status == MoveController.MOVE_BLOCK) {
 
@@ -576,7 +577,7 @@ public class GameProcess {
                         double b = funParams[1];
 
                         Point p1, p2;
-                        int length = 4;
+                        int length = 5;
                         if (Math.abs(a) > 1) {
                             //y方向取上下各取2像素
 
@@ -597,14 +598,14 @@ public class GameProcess {
 
                         MoveInfo moveInfo1 = analysisMove(1, 1, p1, p2);
                         System.out.println("标记障碍物");
-                       // recordRoadInfo(roadInfo, moveInfo1, roadInfoWidth, false);
+                        recordRoadInfo(roadInfo, moveInfo1, roadInfoWidth, false);
                         RobotUtil.sleep(1000);
 
                         double needDirect = moveInfo.calDirect();
                         double realDirect = moveInfo2.calDirect();
 
                         //计算为了躲避障碍物，应该微调的视角幅度
-                        angleAdjust = angle(realDirect,needDirect);
+                        angleAdjust = angle(realDirect, needDirect);
 
 //                        if (angleAdjust<0){
 //                            // 往逆时针方向 调整一次角度
@@ -616,16 +617,16 @@ public class GameProcess {
 
                     }
                     //这里尝试调整角度后重试， 先后退，然后把视角调整到姐
-                   // Point centerPoint = new Point((prePoint.x + curPoint.x) / 2.0, (prePoint.y + curPoint.y) / 2.0);
+                    // Point centerPoint = new Point((prePoint.x + curPoint.x) / 2.0, (prePoint.y + curPoint.y) / 2.0);
                     System.out.println("往回走...");
                     //往反方向走，走到当前位置和上一个点的中心，
                     int moveResult = moveController.moveToPoint(prePoint);
 
                     if (moveResult != MoveController.MOVE_BLOCK) {
 
-                        if (Math.abs(angleAdjust)>0){
+                        if (Math.abs(angleAdjust) > 0) {
                             //往其他方向稍微偏移一点
-                            adjustDirect(moveInfo2.calDirect(),angleAdjust);
+                            adjustDirect(moveInfo2.calDirect(), angleAdjust);
                             moveController.forward(60);
                         }
                         RobotUtil.sleep(100);
@@ -657,7 +658,9 @@ public class GameProcess {
         }
     }
 
-
+    public void randomMove2( ) {
+        randomMoveController.randomMove();
+    }
     //随机行走
     public void randomMove(int count) {
         adjustHorView();
@@ -935,9 +938,9 @@ public class GameProcess {
         //可能文字识别失败，所以失败的话，往旁边转动一下
 
         double curDirect = -1;
-
-        while (true) {
-
+        int retryCount =0;
+        while (retryCount < 100) {
+            retryCount++;
             if (lastDirect != -1) {
                 curDirect = lastDirect;
             } else {
@@ -970,14 +973,14 @@ public class GameProcess {
                 start = updateDirect(start, step);
                 RobotUtil.sleep(30);
                 angleNumber = getAngleNumber();
-                 //  System.out.println(STR. "估计朝向:\{ start },识别到的朝向:\{ angleNumber }" );
+                //  System.out.println(STR. "估计朝向:\{ start },识别到的朝向:\{ angleNumber }" );
                 if (Math.abs(angle(start, angleNumber)) > 2) {
                     errorCount++;
                 }
             }
 
 
-            System.out.println(errorCount);
+            //System.out.println(errorCount);
             if (errorCount > 2) {
                 //认为这是一次失败的的识别
                 MouseDLL.moveXDegree(5, angeleScale);
@@ -1598,8 +1601,8 @@ public class GameProcess {
             String angleStr = PaddleOcr.detect(angleImg);
             angleStr = angleStr.replaceAll("\\D", "");
             return Double.parseDouble(angleStr);
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (Exception _) {
+
         } finally {
             temp.release();
             angleImg.release();

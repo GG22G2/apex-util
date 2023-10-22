@@ -2,12 +2,12 @@ package hsb.game.util.demo;
 
 import hsb.game.util.match.ApexSiftMatcher;
 import hsb.game.util.util.OpencvUtil;
-import org.opencv.core.Core;
-import org.opencv.core.CvType;
-import org.opencv.core.Mat;
-import org.opencv.core.MatOfKeyPoint;
+import org.opencv.core.*;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
+
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * @author 胡帅博
@@ -29,9 +29,9 @@ public class SaveSiftDescriptor {
 
         float[] pixels = new float[imgDescriptors.width() * imgDescriptors.height() * imgDescriptors.channels()];
         imgDescriptors.get(0, 0, pixels);
-        Imgcodecs.imwrite("data.bmp", imgDescriptors);
+        Imgcodecs.imwrite("data_feature.bmp", imgDescriptors);
 
-        Mat t = Imgcodecs.imread("data.bmp", Imgcodecs.IMREAD_UNCHANGED);
+        Mat t = Imgcodecs.imread("data_feature.bmp", Imgcodecs.IMREAD_UNCHANGED);
         byte[] p = new byte[t.width() * t.height() * t.channels()];
         t.get(0, 0, p);
         float[] pixels2 = new float[imgDescriptors.width() * imgDescriptors.height()];
@@ -57,9 +57,31 @@ public class SaveSiftDescriptor {
 
         //保存特征点
         MatOfKeyPoint imgPoints = largeMapFeature.imgPoints;
-        Imgcodecs.imwrite("data_point.bmp", imgPoints);
+
+        KeyPoint[] array = imgPoints.toArray();
+
+        List<Point> list = Arrays.stream(array).map(x -> x.pt).toList();
+
+        double[] d1 = new double[list.size()*3];
+
+        for(int i = 0; i < list.size(); i++) {
+            int index = i*3;
+            Point point = list.get(i);
+            d1[index] = point.x;
+            d1[index+1] = point.y;
+            d1[index+2] = 0;
+        }
+
+
+        Mat pointMat = new Mat(list.size(),1,CvType.CV_64FC3);
+        pointMat.put(0,0,d1);
+
+
+        Imgcodecs.imwrite("data_point.bmp", pointMat);
 
       //  Mat t = Imgcodecs.imread("data.bmp", Imgcodecs.IMREAD_UNCHANGED);
+
+
 
 
     }

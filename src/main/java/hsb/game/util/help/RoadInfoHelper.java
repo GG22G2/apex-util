@@ -1,6 +1,7 @@
 package hsb.game.util.help;
 
 import hsb.game.util.GameProcess;
+import hsb.game.util.util.MathUtils;
 import hsb.game.util.util.OpencvUtil;
 import org.opencv.core.*;
 import org.opencv.imgcodecs.Imgcodecs;
@@ -10,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 import static org.opencv.imgcodecs.Imgcodecs.IMREAD_GRAYSCALE;
@@ -223,7 +225,8 @@ public class RoadInfoHelper {
             if (endPoint.y > startPoint.y) {
                 count = (int) Math.abs(Math.ceil(endPoint.y) - ((int) (startPoint.y))) + 1;
                 startY = (int) (startPoint.y);
-            } else {
+            }
+            else {
                 count = (int) Math.abs(((int) (endPoint.y)) - Math.ceil(startPoint.y)) + 1;
                 startY = (int) (endPoint.y);
             }
@@ -237,7 +240,8 @@ public class RoadInfoHelper {
                 setPointRoadInfo(roadInfo, (int) Math.ceil(x), y, pitch, allow);
                 startY = y;
             }
-        } else {
+        }
+        else {
             int step = 1;
             int count = 0;
             int startX;
@@ -262,7 +266,7 @@ public class RoadInfoHelper {
         //  System.out.println(STR. "       \{ Math.round(endPoint.x) },\{ Math.round(endPoint.y) }" );
         // setPointRoadInfo(roadInfo, (int) startPoint.x, (int) startPoint.y, pitch, allow);
         // setPointRoadInfo(roadInfo, (int) endPoint.x, (int) endPoint.y, pitch, allow);
-        showRoadInfo(roadInfo, (int) startPoint.x, (int) startPoint.y, pitch, 300);
+       // showRoadInfo(roadInfo, (int) startPoint.x, (int) startPoint.y, pitch, 300);
     }
 
 

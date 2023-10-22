@@ -81,6 +81,14 @@ public class MoveController {
         RobotUtil.sleep(10);
     }
 
+    public void stopShift() {
+        if (shift) {
+            RobotUtil.keyRelease(KeyEvent.VK_SHIFT);
+        }
+        shift = false;
+    }
+
+
     //跳伞
     public void launch() {
         RobotUtil.keyLongPressOnce(KeyEvent.VK_E, 500);
@@ -119,11 +127,14 @@ public class MoveController {
         gameProcess.xDirect(calDirect);
         RobotUtil.sleep(50);
         shiftForward();
-//        if (distance > 6) {
-//            shiftForward();
-//        } else {
-//            forward();
-//        }
+        if (distance > 5) {
+            shiftForward();
+        } else {
+            forward();
+        }
+        int status = MOVE_SUCCESS;
+
+        int sleepTime = 50;
 
         while (true) {
             curTime = System.currentTimeMillis();
@@ -136,86 +147,95 @@ public class MoveController {
 
             GameProcess.MoveInfo temp = analysisMove(1, 1, point, nextPoint);
 
-            //System.out.println(STR. "距离下一个点还有:\{ temp.distance }" );
+            System.out.println(STR. "距离下一个点还有:\{ temp.distance() }" );
 
-            if (temp.distance() < 4) {
-                stop();
-                //走慢一点
-                if (slowMove(nextPoint, historyPos)) {
-                    break;
-                }else {
-                    return MOVE_BLOCK;
-                }
-
+            //todo 如果遇到障碍物，那么行进路线就会有一定的偏移,所有需要能够调整角度,但是角度调整不能太早，太早可能会导致撞上其他障碍物
+            if (temp.distance() < 5 && shift) {
+                stopShift();
             }
 
-            if (isMoveStop(historyPos, nextPoint)) {
+            if (temp.distance() < 2) {
+                break;
+            }
+
+
+            if (isMoveStop(historyPos, nextPoint, 0.06)) {
                 System.out.println(STR."可能遇到障碍物了");
                 //先往上一个节点走，然后标记这个位置是障碍物，然后重新生成路径
-                return MOVE_BLOCK;
+                status = MOVE_BLOCK;
+                break;
             }
 
-            if (isMoveGood(historyPos, nextPoint, 0.5)) {
+            if (isMoveGood(historyPos, nextPoint, 0.3)) {
                 System.out.println(STR."可能走过了");
-                return MOVE_THROUGH;
+                status = MOVE_THROUGH;
+                break;
             }
 
+            if (shift){
+                RobotUtil.sleep(30);
+            }else {
+                RobotUtil.sleep(5);
+            }
 
-            RobotUtil.sleep(200);
         }
 
         stop();
         historyPos.clear();
-        return MOVE_SUCCESS;
+        return status;
     }
 
 
-    public boolean slowMove(Point endPoint, List<HistoryPos> historyPos) {
+    public int slowMove(Point endPoint, List<HistoryPos> historyPos) {
         long curTime = System.currentTimeMillis();
         Point point = gameProcess.calCurPosition();
         if (point == null) {
             forward(20);
             point = gameProcess.calCurPosition();
         }
-        if (point==null){
-            return false;
+        if (point == null) {
+            return MOVE_BLOCK;
         }
         historyPos.add(new HistoryPos(curTime, point.x, point.y));
-        double v = MathUtils.pointDistance(endPoint, point);
 
-        double v1 = v * 60;
-        forward((int) v1);
+        forward();
         while (true) {
             curTime = System.currentTimeMillis();
             point = gameProcess.calCurPosition();
 
             historyPos.add(new HistoryPos(curTime, point.x, point.y));
-            v = MathUtils.pointDistance(endPoint, point);
+            double v = MathUtils.pointDistance(endPoint, point);
             if (v < 2) {
                 System.out.println(STR. "接近点\{ endPoint }，剩余距离：\{ v }" );
-                return true;
+                stop();
+                return MOVE_SUCCESS;
             }
 
-            if (isMoveStop(historyPos,endPoint)){
+            if (isMoveStop(historyPos, endPoint, 0.2)) {
                 System.out.println(STR. "点\{ point }，可能是障碍物" );
-                return false;
+                stop();
+                return MOVE_BLOCK;
             }
 
             if (isMoveGood(historyPos, endPoint, 0.3)) {
+                stop();
                 //走反了
-                return false;
+                return MOVE_THROUGH;
             }
 
-            forward(100);
             System.out.println(STR. "慢速移动，距离：\{ v }" );
         }
+
     }
 
 
     //判断是不是走过来
-    private boolean isMoveGood(List<HistoryPos> historyPosList, Point targetPoint, double t) {
+    boolean isMoveGood(List<HistoryPos> historyPosList, Point targetPoint, double t) {
+        if (historyPosList.size() < 5) {
+            return false;
+        }
         int errorCount = 0;
-        int start = Math.max(0, historyPosList.size() - 4);
+        int start = Math.max(0, historyPosList.size() - 3);
         for (int i = start; i < historyPosList.size() - 1; i++) {
             HistoryPos historyPos = historyPosList.get(i);
             HistoryPos historyPos2 = historyPosList.get(i + 1);
@@ -226,10 +246,13 @@ public class MoveController {
             }
         }
 
-        return errorCount > 2;
+        return errorCount > 1;
     }
 
-    private boolean isMoveStop(List<HistoryPos> historyPosList, Point targetPoint) {
+    boolean isMoveStop(List<HistoryPos> historyPosList, Point targetPoint, double limit) {
+        if (historyPosList.size() < 7) {
+            return false;
+        }
         int errorCount = 0;
         int start = Math.max(0, historyPosList.size() - 5);
         for (int i = start; i < historyPosList.size() - 1; i++) {
@@ -237,11 +260,12 @@ public class MoveController {
             HistoryPos historyPos2 = historyPosList.get(i + 1);
             double v = MathUtils.pointDistance(new Point(historyPos.x(), historyPos.y()), targetPoint);
             double v2 = MathUtils.pointDistance(new Point(historyPos2.x(), historyPos2.y()), targetPoint);
-            if (Math.abs(v2 - v) < 0.3) {
+            if (Math.abs(v2 - v) < limit) {
                 errorCount++;
             }
         }
         return errorCount > 3;
     }
+
 
 }

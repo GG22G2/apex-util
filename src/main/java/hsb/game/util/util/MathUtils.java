@@ -2,7 +2,10 @@ package hsb.game.util.util;
 
 import org.opencv.core.Point;
 
+import java.util.ArrayList;
 import java.util.List;
+
+import static hsb.game.util.help.RoadInfoHelper.calYI_YUAN_YI_CI;
 
 /**
  * @author 胡帅博
@@ -99,6 +102,82 @@ public class MathUtils {
         } else {
             return (y - b) / a;
         }
+    }
+
+
+    //从start往end的下一个点
+    public static Point nextPoint(Point startPoint, Point endPoint, double a, double b, int step) {
+        Point nextPoint = null;
+        double x, y;
+        if (Math.abs(a) > 1) {
+            //斜率大于1，到完全垂直的处理
+            if (endPoint.y > startPoint.y) {
+                // step是正值
+                step = Math.abs(step);
+            } else {
+                step = -Math.abs(step);
+            }
+            y = endPoint.y + step;
+            x = Math.abs(a) == Double.MAX_VALUE ? endPoint.x : ((y - b) / a);
+        } else {
+            if (endPoint.x > startPoint.x) {
+                step = Math.abs(step);
+            } else {
+                step = -Math.abs(step);
+            }
+            x = endPoint.x + step;
+            y = (a * x + b);
+        }
+        nextPoint = new Point(Math.round(x), Math.round(y));
+        return nextPoint;
+    }
+
+    public static List<Point> linePoints(Point startPoint, Point endPoint) {
+        double[] fc = calYI_YUAN_YI_CI(startPoint, endPoint);
+        return linePoints(startPoint,endPoint,fc[0],fc[1]);
+    }
+
+
+    //计算给定的起点和终点之间的点
+    public static List<Point> linePoints(Point startPoint, Point endPoint, double a, double b) {
+        List<Point> pointList = new ArrayList<>();
+        pointList.add(startPoint);
+        if (Math.abs(a) > 1) {
+            //斜率大于1，到完全垂直的处理
+            int step = 1;
+            int count = (int) Math.abs(endPoint.y - startPoint.y)-1;
+            double startY;
+            if (endPoint.y > startPoint.y) {
+                startY = startPoint.y;
+            } else {
+                startY =  endPoint.y;
+            }
+            while (count > 0) {
+                count--;
+                double y = startY + step;
+                double x = Math.abs(a) == Double.MAX_VALUE ? endPoint.x : ((y - b) / a);
+                pointList.add(new Point(Math.round(x),y));
+                startY = y;
+            }
+        } else {
+            int step = 1;
+            int count = (int) Math.abs(endPoint.x -  startPoint.x)-1;
+            double startX;
+            if (endPoint.x > startPoint.x) {
+                startX = (int) (startPoint.x);
+            } else {
+                startX = (int) (endPoint.x);
+            }
+            while (count > 0) {
+                count--;
+                double x = startX + step;
+                double y = (a * x + b);
+                pointList.add(new Point(x,Math.round(y)));
+                startX = x;
+            }
+        }
+        pointList.add(endPoint);
+        return pointList;
     }
 
 
